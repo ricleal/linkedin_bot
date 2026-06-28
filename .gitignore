@@ -1,0 +1,30 @@
+# Virtual environment
+.venv/
+
+# Environment variables (contains secrets)
+.env
+
+# SQLite database (contains your posts and tokens)
+posts.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# uv
+uv.lock
+
+!.env.template
+
