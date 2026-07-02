@@ -27,7 +27,7 @@ class Remaps:
 # LinkedIn "little text" reserved characters — if unescaped, LinkedIn's
 # parser stops at the first occurrence and truncates the post.
 # Based on: text.replace(/[\(*\)\[\]\{\}<>@|~_]/gm, (x) => "\\" + x)
-_LINKEDIN_RESERVED = frozenset("()*[]{}<>@|~_")
+_LINKEDIN_RESERVED = frozenset(r"()*[]{}<>@|~_")
 
 
 def escape_linkedin(text: str) -> str:

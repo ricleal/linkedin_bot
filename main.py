@@ -275,6 +275,99 @@ def generate(
     image_provider.cleanup(local_image_path)
 
 
+def _run_interactive_menu(
+    generated_text: str,
+    current_subject: str,
+    local_image_path: str | None,
+    image_provider: ImageProvider,
+    post_id: int,
+    language: str = "",
+    max_length: int = 0,
+) -> tuple[str, str, str | None, int]:
+    """Interactive loop to review, regenerate, or refine a post before publishing.
+
+    Shows the post preview and offers options:
+        p — Post to LinkedIn
+        r — Regenerate with the same subject
+        n — New random subject & regenerate
+        s — Specify your own subject
+        q — Quit without posting
+
+    Returns:
+        Updated (generated_text, current_subject, local_image_path, post_id).
+    """
+    subjects = load_subjects()
+
+    while True:
+        typer.echo("\n" + "═" * 60)
+        typer.echo("   📝  POST PREVIEW")
+        typer.echo("═" * 60)
+        typer.echo(generated_text)
+        typer.echo("\n" + "─" * 60)
+        typer.echo(f"   📊 Characters: {len(generated_text)}")
+        typer.echo(f"   📌 Subject: {current_subject[:70]}")
+        typer.echo("─" * 60)
+
+        typer.echo("\nOptions:")
+        typer.echo("  [p]  Post to LinkedIn")
+        typer.echo("  [r]  Regenerate post (same subject)")
+        typer.echo("  [n]  New random subject & regenerate")
+        typer.echo("  [s]  Specify your own subject")
+        typer.echo("  [q]  Quit without posting")
+
+        choice = typer.prompt("\nWhat would you like to do", default="p").strip().lower()
+
+        if choice == "p":
+            return generated_text, current_subject, local_image_path, post_id
+
+        if choice == "q":
+            typer.echo("👋 Exiting without posting.")
+            if local_image_path:
+                image_provider.cleanup(local_image_path)
+            raise typer.Exit(0)
+
+        if choice in ("r", "n", "s"):
+            # Resolve the subject
+            if choice == "n":
+                current_subject = pick_random_subject(subjects)
+                typer.echo(f"📌 New subject: {current_subject}")
+            elif choice == "s":
+                user_subject = typer.prompt("Enter your subject").strip()
+                if not user_subject:
+                    continue
+                current_subject = user_subject
+            # choice == "r" keeps current_subject unchanged
+
+            # Regenerate
+            typer.echo("⏳ Generating post with DeepSeek...")
+            raw_text = generate_post(current_subject, language, max_length)
+            if not raw_text:
+                typer.secho("❌ Failed to generate post.", fg=typer.colors.RED, err=True)
+                continue
+
+            typer.echo("🔄 Converting Markdown to Unicode...")
+            generated_text = escape_linkedin(convert(raw_text))
+
+            # Fetch a new image
+            if local_image_path:
+                image_provider.cleanup(local_image_path)
+            local_image_path, image_url = image_provider.fetch_image(current_subject)
+
+            # Save the new post to the database
+            post_id = db.save_post(
+                DB_PATH_ABS,
+                current_subject,
+                generated_text,
+                image_url=image_url,
+                generated_raw_text=raw_text,
+            )
+            logger.info("New post saved (ID=%d).", post_id)
+            typer.echo(f"💾 Saved as entry #{post_id}")
+            continue
+
+        typer.secho(f"❌ Unknown option: {choice}", fg=typer.colors.RED, err=True)
+
+
 @app.command()
 def post(
     entry_id: Optional[int] = typer.Option(
@@ -300,6 +393,12 @@ def post(
         "--max-length",
         "-m",
         help=f"Max post length in characters (default: {MAX_POST_LENGTH})",
+    ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Review the post interactively before publishing.",
     ),
 ):
     """Generate a post and publish it to LinkedIn."""
@@ -419,6 +518,21 @@ def post(
             generated_raw_text=raw_text,
         )
         logger.info("Post saved to database (ID=%d).", post_id)
+
+    # ── Interactive review ─────────────────────────────────────────────────
+
+    if interactive:
+        generated_text, current_subject, local_image_path, post_id = (
+            _run_interactive_menu(
+                generated_text,
+                current_subject,
+                local_image_path,
+                image_provider,
+                post_id,
+                language=language or "",
+                max_length=max_length or 0,
+            )
+        )
 
     # ── Publish to LinkedIn ────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@
 Uses the official linkedin-api-client library under the hood.
 """
 
+import json
 import logging
 import threading
 import time
@@ -312,6 +313,11 @@ class LinkedInClient:
 
         # Use the /posts endpoint with the versioned API.
         # The RestliClient does NOT raise on HTTP errors, so we check status manually.
+
+        logger.debug(
+            "LinkedIn create post request entity:\n%s",
+            json.dumps(entity, indent=2, ensure_ascii=False),
+        )
         response = self._restli_client.create(
             resource_path=self.POSTS_RESOURCE,
             entity=entity,
