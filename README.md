@@ -9,7 +9,7 @@ AI-powered LinkedIn post generator using **DeepSeek** for content creation and t
 - 📚 340+ curated software engineering subjects across 10+ categories
 - 💾 SQLite database — tracks every post with status and timestamps
 - 🔐 OAuth 2.0 with token persistence (no repeated logins)
-- 🖼️  Unsplash image integration for post visuals
+- 🖼️  Auto-generated tweet-card images (no API key needed)
 - 📋 Full-featured history viewer with filters and detail view
 
 ## Prerequisites
@@ -48,9 +48,6 @@ DEEPSEEK_MODEL=deepseek-chat
 # Post Configuration
 MAX_POST_LENGTH=3000
 POST_LANGUAGE=en
-
-# Unsplash API (optional — enables image search)
-UNSPLASH_ACCESS_KEY=
 
 # Database
 DB_PATH=posts.db
@@ -151,7 +148,7 @@ linkedin-bot/
 ├── main.py              # Entry point — Typer CLI with 5 commands
 ├── linkedin_client.py   # LinkedIn API wrapper (official client library)
 ├── db.py                # SQLite operations (posts, tokens)
-├── image_provider.py    # Unsplash image search and download
+├── image_provider.py    # Tweet-card image generator (Pillow)
 ├── converter.py         # Markdown to Unicode for LinkedIn compatibility
 ├── subjects.yaml        # 340+ curated post subjects
 ├── .env.template        # Environment variable template

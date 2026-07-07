@@ -1,214 +1,276 @@
-"""Fetch images from Unsplash to accompany LinkedIn posts.
+"""Generate a fake tweet-card image to accompany LinkedIn posts.
 
-Uses the free Unsplash API (requires an access key).
-Rate limit: 50 requests/hour on the free tier.
+Renders a Twitter/X dark-mode card using Pillow so every LinkedIn post gets
+a visually consistent, branded image — no external API key required.
 """
 
 import logging
-import os
 import tempfile
+import textwrap
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
+# ── Twitter / X dark-mode palette ──────────────────────────────────────────
+_BG = (21, 32, 43)
+_WHITE = (231, 233, 234)
+_GREY = (113, 118, 123)
+_BLUE = (29, 155, 240)
+_BORDER = (47, 51, 54)
+
+# ── Profile identity ────────────────────────────────────────────────────────
+_DISPLAY_NAME = "Ricardo Leal"
+_HANDLE = "@ricferrazleal"
+_AVATAR_URL = "https://unavatar.io/x/ricferrazleal"
+
+# ── Card geometry ───────────────────────────────────────────────────────────
+_CARD_W = 1200
+_MARGIN = 52
+_AVATAR_SIZE = 96
+_GAP = 20  # gap between avatar and name column
+
+
+# ── Font helpers ────────────────────────────────────────────────────────────
+
+
+def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Return a truetype font, falling back to Pillow's built-in bitmap font."""
+    candidates_bold = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+    candidates_regular = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+    for path in candidates_bold if bold else candidates_regular:
+        try:
+            return ImageFont.truetype(path, size)
+        except (IOError, OSError):
+            continue
+    logger.debug("No system truetype font found; using Pillow default.")
+    return ImageFont.load_default()
+
+
+# ── Avatar helpers ──────────────────────────────────────────────────────────
+
+
+def _circular_mask(size: int) -> Image.Image:
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+    return mask
+
+
+def _fetch_avatar() -> Image.Image | None:
+    """Fetch the profile picture from unavatar.io and crop it to a circle."""
+    try:
+        r = requests.get(_AVATAR_URL, timeout=8)
+        r.raise_for_status()
+        avatar = (
+            Image.open(BytesIO(r.content))
+            .convert("RGBA")
+            .resize((_AVATAR_SIZE, _AVATAR_SIZE), Image.LANCZOS)
+        )
+        avatar.putalpha(_circular_mask(_AVATAR_SIZE))
+        return avatar
+    except Exception as exc:
+        logger.debug("Could not fetch avatar: %s", exc)
+        return None
+
+
+def _placeholder_avatar() -> Image.Image:
+    """Blue circle with initials as a fallback avatar."""
+    img = Image.new("RGBA", (_AVATAR_SIZE, _AVATAR_SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((0, 0, _AVATAR_SIZE, _AVATAR_SIZE), fill=_BLUE)
+    font = _load_font(36, bold=True)
+    initials = "RL"
+    bbox = draw.textbbox((0, 0), initials, font=font)
+    iw, ih = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text(
+        ((_AVATAR_SIZE - iw) / 2, (_AVATAR_SIZE - ih) / 2 - 2),
+        initials,
+        font=font,
+        fill=_WHITE,
+    )
+    return img
+
+
+# ── Tweet text helpers ──────────────────────────────────────────────────────
+
+_HASHTAGS = "#SoftwareEngineering #Engineering #Tech"
+
+_QUESTION_STARTERS = (
+    "how ",
+    "why ",
+    "what ",
+    "when ",
+    "where ",
+    "who ",
+    "is ",
+    "are ",
+    "should ",
+    "can ",
+    "could ",
+    "would ",
+    "do ",
+    "does ",
+    "will ",
+)
+
+
+def _subject_to_tweet(subject: str) -> str:
+    """Turn the post subject into a punchy tweet snippet (≤ 240 chars)."""
+    text = subject.strip()
+    lower = text.lower()
+
+    if any(lower.startswith(w) for w in _QUESTION_STARTERS):
+        tweet = text.rstrip("?.") + "?"
+    else:
+        tweet = text.rstrip("?.") + "."
+
+    # Truncate to leave room for hashtags
+    max_body = 240 - len(_HASHTAGS) - 4  # 4 for "\n\n" + space
+    if len(tweet) > max_body:
+        tweet = tweet[: max_body - 1].rstrip() + "…"
+
+    return f"{tweet}\n\n{_HASHTAGS}"
+
+
+# ── Card renderer ───────────────────────────────────────────────────────────
+
+
+def generate_tweet_image(subject: str, destination: str) -> bool:
+    """Render a Twitter/X dark-mode card and save it as a PNG.
+
+    Args:
+        subject: The LinkedIn post subject line.
+        destination: Output file path (should end in .png).
+
+    Returns:
+        True on success, False on failure.
+    """
+    tweet_text = _subject_to_tweet(subject)
+    date_str = datetime.now().strftime("%-I:%M %p · %b %-d, %Y")
+
+    # Fonts
+    f_name = _load_font(30, bold=True)
+    f_handle = _load_font(26)
+    f_tweet = _load_font(38)
+    f_meta = _load_font(24)
+    f_x = _load_font(26, bold=True)
+
+    # Wrap tweet text (character-width approximation for the chosen font/card width)
+    wrapped = textwrap.fill(tweet_text, width=50)
+
+    # Measure tweet block height on a dummy canvas
+    probe = ImageDraw.Draw(Image.new("RGB", (_CARD_W, 10)))
+    tweet_bbox = probe.textbbox((0, 0), wrapped, font=f_tweet, spacing=10)
+    tweet_h = tweet_bbox[3] - tweet_bbox[1]
+
+    # Total card height
+    card_h = (
+        _MARGIN  # top padding
+        + _AVATAR_SIZE  # avatar / header row
+        + 28  # gap below header
+        + tweet_h  # tweet body
+        + 32  # gap
+        + 28  # meta line height
+        + _MARGIN  # bottom padding
+    )
+
+    # Canvas
+    img = Image.new("RGB", (_CARD_W, card_h), _BG)
+    draw = ImageDraw.Draw(img)
+
+    # Top border accent
+    draw.rectangle([(0, 0), (_CARD_W, 3)], fill=_BLUE)
+
+    # ── Avatar ──
+    avatar = _fetch_avatar() or _placeholder_avatar()
+    ax, ay = _MARGIN, _MARGIN
+    img.paste(avatar, (ax, ay), avatar)
+
+    # ── Name + handle ──
+    nx = ax + _AVATAR_SIZE + _GAP
+    draw.text((nx, ay + 4), _DISPLAY_NAME, font=f_name, fill=_WHITE)
+    draw.text((nx, ay + 42), _HANDLE, font=f_handle, fill=_GREY)
+
+    # ── X logo (top-right) ──
+    x_logo_x = _CARD_W - _MARGIN - 36
+    x_logo_y = _MARGIN + 4
+    draw.text((x_logo_x, x_logo_y), "\U0001d54f", font=f_x, fill=_GREY)
+
+    # ── Tweet body ──
+    ty = _MARGIN + _AVATAR_SIZE + 28
+    draw.text(
+        (_MARGIN, ty),
+        wrapped,
+        font=f_tweet,
+        fill=_WHITE,
+        spacing=10,
+    )
+
+    # ── Meta line ──
+    my = ty + tweet_h + 32
+    draw.text((_MARGIN, my), date_str, font=f_meta, fill=_GREY)
+
+    # ── Bottom separator ──
+    sep_y = my + 34
+    draw.line([(_MARGIN, sep_y), (_CARD_W - _MARGIN, sep_y)], fill=_BORDER, width=1)
+
+    try:
+        img.save(destination, format="PNG", optimize=True)
+        return True
+    except Exception as exc:
+        logger.error("Failed to save tweet card: %s", exc)
+        return False
+
+
+# ── Public interface (drop-in replacement for the old ImageProvider) ─────────
+
 
 class ImageProvider:
-    """Search Unsplash for images matching a subject and download them."""
+    """Generate a fake tweet-card image for a LinkedIn post subject.
 
-    UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+    The constructor accepts (and ignores) any legacy positional/keyword
+    arguments so it remains a drop-in replacement for the old Unsplash-backed
+    provider.
+    """
 
-    # Map common subject keywords to broader visual concepts.
-    # Unsplash has lots of tech/office/abstract images that work well.
-    _FALLBACK_QUERIES = [
-        "technology abstract",
-        "software development",
-        "coding",
-        "data center",
-        "digital transformation",
-        "modern office",
-        "engineering",
-    ]
-
-    def __init__(self, access_key: str | None = None):
-        self.access_key = access_key or os.getenv("UNSPLASH_ACCESS_KEY", "")
-
-    def _keywords_from_subject(self, subject: str) -> list[str]:
-        """Extract search keywords from a subject line."""
-        # Strip common prefixes
-        text = subject.lower()
-        for prefix in [
-            "how to ",
-            "how ",
-            "why ",
-            "what ",
-            "the ",
-            "building ",
-            "designing ",
-            "lessons from ",
-            "lessons learned from ",
-        ]:
-            if text.startswith(prefix):
-                text = text[len(prefix) :]
-                break
-
-        # Remove anything after a colon or em dash (subtitle)
-        for sep in [": ", ": ", " — ", " — ", " – ", " - "]:
-            if sep in text:
-                text = text[: text.index(sep)]
-                break
-
-        # Remove trailing question marks
-        text = text.rstrip("?.")
-
-        # Take first 3 meaningful words
-        stop_words = {
-            "a",
-            "an",
-            "the",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "from",
-            "is",
-            "it",
-            "are",
-            "was",
-            "that",
-            "this",
-            "these",
-            "those",
-            "its",
-            "your",
-            "our",
-            "their",
-        }
-        words = [w for w in text.split() if w not in stop_words and len(w) > 2]
-        return words[:3] if words else ["technology"]
+    def __init__(self, *args, **kwargs) -> None:
+        pass
 
     def fetch_image(self, subject: str) -> tuple[str | None, str | None]:
-        """Find an image on Unsplash matching the subject and download it.
+        """Generate a tweet-card PNG for *subject*.
 
         Returns:
-            A tuple of (local_file_path, unsplash_image_url).
-            Both are None if no image could be fetched.
+            ``(local_file_path, None)`` on success, ``(None, None)`` on failure.
+            The second element (image_url) is always ``None`` because the image
+            is generated locally.
         """
-        if not self.access_key:
-            logger.warning("UNSPLASH_ACCESS_KEY not set — skipping image.")
-            return None, None
-
-        keywords = self._keywords_from_subject(subject)
-        query = " ".join(keywords)
-        logger.info(
-            "Searching Unsplash for image (query=%s, subject=%.50s)", query, subject
-        )
-
-        # Try the specific query first; fall back to broader tech queries
-        queries_to_try = [query] + self._FALLBACK_QUERIES
-
-        for q in queries_to_try:
-            image_url, download_url = self._search_unsplash(q)
-            if image_url:
-                local_path = self._download_image(image_url)
-                if local_path:
-                    logger.info("Image found on Unsplash: %s", image_url)
-                    return str(local_path), image_url
-            # Don't keep retrying the fallbacks if the first failed due to auth
-            if q == queries_to_try[0] and not self.access_key:
-                break
-
-        logger.warning("Could not find a suitable image on Unsplash.")
-        return None, None
-
-    def _search_unsplash(self, query: str) -> tuple[str | None, str | None]:
-        """Search Unsplash for a query. Returns (image_url, download_url).
-
-        The ``image_url`` is a direct image URL (usable for downloading).
-        The ``download_url`` is an API endpoint for tracking downloads
-        (requires a separate authed request).
-        """
-        logger.debug(
-            "Unsplash API request: GET %s?query=%s", self.UNSPLASH_SEARCH_URL, query
-        )
         try:
-            response = requests.get(
-                self.UNSPLASH_SEARCH_URL,
-                headers={"Authorization": f"Client-ID {self.access_key}"},
-                params={
-                    "query": query,
-                    "per_page": 3,
-                    "orientation": "landscape",
-                    "content_filter": "high",
-                },
-                timeout=10,
-            )
-
-            logger.debug("Unsplash API response: HTTP %d", response.status_code)
-
-            if response.status_code == 401:
-                logger.error("Unsplash API key is invalid (HTTP 401).")
-                return None, None
-
-            if response.status_code == 403:
-                logger.error(
-                    "Unsplash rate limit exceeded (HTTP 403). Try again later."
-                )
-                return None, None
-
-            response.raise_for_status()
-            data = response.json()
-
-            if not data.get("results"):
-                logger.debug("Unsplash returned 0 results for query: %s", query)
-                return None, None
-
-            # Pick the first result — use the raw URL for downloading
-            # (raw gives highest quality; regular is a good fallback)
-            photo = data["results"][0]
-            img_url = photo["urls"]["raw"] or photo["urls"]["regular"]
-            download_url = photo["links"]["download_location"]
-            logger.debug(
-                "Unsplash result: %s (by %s)",
-                img_url,
-                photo.get("user", {}).get("name", "unknown"),
-            )
-            return img_url, download_url
-
-        except requests.RequestException as e:
-            logger.error("Unsplash search failed: %s", e)
-            return None, None
-
-    def _download_image(self, image_url: str) -> Path | None:
-        """Download an image to a temporary file."""
-        logger.debug("Downloading image from Unsplash...")
-        try:
-            response = requests.get(image_url, timeout=15)
-            logger.debug(
-                "Image download response: HTTP %d (%d bytes)",
-                response.status_code,
-                len(response.content),
-            )
-            response.raise_for_status()
-
-            # Save to a temp file
-            tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-            tmp.write(response.content)
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             tmp.close()
-            logger.debug("Image saved to temp file: %s", tmp.name)
-            return Path(tmp.name)
-
-        except requests.RequestException as e:
-            logger.error("Failed to download image: %s", e)
-            return None
+            ok = generate_tweet_image(subject, tmp.name)
+            if ok:
+                logger.info("Tweet card generated: %s", tmp.name)
+                return tmp.name, None
+            Path(tmp.name).unlink(missing_ok=True)
+        except Exception as exc:
+            logger.error("Failed to generate tweet card: %s", exc)
+        return None, None
 
     @staticmethod
     def cleanup(path: str | Path | None) -> None:
