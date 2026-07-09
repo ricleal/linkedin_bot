@@ -130,7 +130,7 @@ _QUESTION_STARTERS = (
 )
 
 
-def _subject_to_tweet(subject: str) -> str:
+def subject_to_tweet(subject: str) -> str:
     """Turn the post subject into a punchy tweet snippet (≤ 240 chars)."""
     text = subject.strip()
     lower = text.lower()
@@ -161,7 +161,7 @@ def generate_tweet_image(subject: str, destination: str) -> bool:
     Returns:
         True on success, False on failure.
     """
-    tweet_text = _subject_to_tweet(subject)
+    tweet_text = subject_to_tweet(subject)
     date_str = datetime.now().strftime("%-I:%M %p · %b %-d, %Y")
 
     # Fonts

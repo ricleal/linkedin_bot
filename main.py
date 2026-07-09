@@ -23,7 +23,7 @@ from openai import OpenAI
 
 import db
 from converter import convert, escape_linkedin
-from image_provider import ImageProvider
+from image_provider import ImageProvider, subject_to_tweet
 from linkedin_client import LinkedInClient
 
 # ── Configuration ──────────────────────────────────────────────────────────
@@ -139,7 +139,7 @@ def generate_post(subject: str, language: str = "", max_length: int = 0) -> str 
         )
         content = response.choices[0].message.content
         if content:
-            content = content.strip()
+            content = content.strip().strip('"\u201c\u201d')
             logger.info("DeepSeek API response received (%d characters).", len(content))
             return content
         logger.warning("DeepSeek API returned empty content.")
@@ -307,6 +307,9 @@ def _run_interactive_menu(
         typer.echo(f"   📊 Characters: {len(generated_text)}")
         typer.echo(f"   📌 Subject: {current_subject[:70]}")
         typer.echo("─" * 60)
+        typer.echo("\n🐦 Tweet card text:")
+        typer.secho(subject_to_tweet(current_subject), fg=typer.colors.CYAN)
+        typer.echo("─" * 60)
 
         typer.echo("\nOptions:")
         typer.echo("  [p]  Post to LinkedIn")
@@ -315,7 +318,9 @@ def _run_interactive_menu(
         typer.echo("  [s]  Specify your own subject")
         typer.echo("  [q]  Quit without posting")
 
-        choice = typer.prompt("\nWhat would you like to do", default="p").strip().lower()
+        choice = (
+            typer.prompt("\nWhat would you like to do", default="p").strip().lower()
+        )
 
         if choice == "p":
             return generated_text, current_subject, local_image_path, post_id
@@ -342,7 +347,9 @@ def _run_interactive_menu(
             typer.echo("⏳ Generating post with DeepSeek...")
             raw_text = generate_post(current_subject, language, max_length)
             if not raw_text:
-                typer.secho("❌ Failed to generate post.", fg=typer.colors.RED, err=True)
+                typer.secho(
+                    "❌ Failed to generate post.", fg=typer.colors.RED, err=True
+                )
                 continue
 
             typer.echo("🔄 Converting Markdown to Unicode...")
