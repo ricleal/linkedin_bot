@@ -105,12 +105,17 @@ def generate_post(subject: str, language: str = "", max_length: int = 0) -> str 
         f"tech-savvy audience of software engineers and developers. "
         f"Use a natural, conversational tone. "
         f"Keep the post under {length} characters. "
-        f"The post should feel authentic, not like marketing."
+        f"The post should feel authentic, not like marketing. "
+        f"STRUCTURE: The very first line MUST be a short, punchy hook of at most "
+        f"10 words that grabs attention — like a newspaper headline or a bold "
+        f"provocation (e.g. 'The title \"Tech Lead\" is a trap.' or "
+        f"'Most code reviews are a waste of time.'). "
+        f"Follow it with a blank line, then the rest of the post. "
         f"CRITICAL: Output ONLY the post content itself. "
         f"Do NOT include any introductory phrases, meta-commentary, disclaimers, "
         f"or descriptions such as 'Here is a LinkedIn post...' or 'I hope this helps...'. "
         f"Do NOT wrap the post in quotes or code blocks. "
-        f"Start directly with the post text."
+        f"Start directly with the hook line."
     )
 
     user_prompt = (
