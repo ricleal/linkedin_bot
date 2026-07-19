@@ -5,6 +5,7 @@ AI-powered LinkedIn post generator using **DeepSeek** for content creation and t
 ## Features
 
 - 🤖 Generates engaging tech posts via DeepSeek API
+- 📰 `news` command — pick a trending/recent tech story (RSS) and post commentary about it
 - 🎛️  Typer CLI — clean subcommand-based interface
 - 📚 340+ curated software engineering subjects across 10+ categories
 - 💾 SQLite database — tracks every post with status and timestamps
@@ -76,6 +77,17 @@ uv run python main.py post --subject "Microservices architecture"
 
 # Override language or max length
 uv run python main.py post --language pt --max-length 2000
+
+# ── News (pick a trending/recent tech story and post about it) ─────────
+
+# Browse recent tech news (last 24h) and pick one to post about
+uv run python main.py news
+
+# Look back further / list more articles
+uv run python main.py news --hours 48 --limit 20
+
+# Override language or max length, same as `post`
+uv run python main.py news --language pt --max-length 2000
 
 # ── Generate (local preview, no LinkedIn) ───────────────────────────────
 
