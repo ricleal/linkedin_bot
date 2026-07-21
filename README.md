@@ -5,8 +5,10 @@ AI-powered LinkedIn post generator using **DeepSeek** for content creation and t
 ## Features
 
 - 🤖 Generates engaging tech posts via DeepSeek API
-- 📰 `news` command — pick a trending/recent tech story (RSS) and post commentary about it
-- 🎛️  Typer CLI — clean subcommand-based interface
+- 🎛️  `--source subjects|news|blogs` — write about a curated topic, react to trending tech news (RSS),
+  or react to a post from a curated engineering blog (RSS)
+- ⚡ `--auto` — fully unattended mode, auto-picks the top trending/most recent article and publishes
+  with no prompts (handy for cron)
 - 📚 340+ curated software engineering subjects across 10+ categories
 - 💾 SQLite database — tracks every post with status and timestamps
 - 🔐 OAuth 2.0 with token persistence (no repeated logins)
@@ -64,9 +66,9 @@ LOG_LEVEL=INFO
 The CLI is built with [Typer](https://typer.tiangolo.com/) and offers several subcommands:
 
 ```bash
-# ── Post to LinkedIn ─────────────────────────────────────────────────────
+# ── Post to LinkedIn (--source subjects|news|blogs, default: subjects) ──
 
-# Generate a fresh post and publish it
+# Generate a fresh post about a random subject and publish it
 uv run python main.py post
 
 # Publish an existing entry from the database by its ID
@@ -75,19 +77,21 @@ uv run python main.py post --entry-id 5
 # Use a specific subject
 uv run python main.py post --subject "Microservices architecture"
 
+# Browse recent tech news (last 24h), pick one, review before publishing
+uv run python main.py post --source news --interactive
+
+# React to a post from a curated engineering blog (2-week look-back by default)
+uv run python main.py post --source blogs --interactive
+
+# Fully unattended: auto-pick the top trending/most recent article, no prompts (good for cron)
+uv run python main.py post --source news --auto
+uv run python main.py post --source blogs --auto
+
+# Look back further / list more articles in the selection menu
+uv run python main.py post --source news --hours 48 --limit 20 --interactive
+
 # Override language or max length
 uv run python main.py post --language pt --max-length 2000
-
-# ── News (pick a trending/recent tech story and post about it) ─────────
-
-# Browse recent tech news (last 24h) and pick one to post about
-uv run python main.py news
-
-# Look back further / list more articles
-uv run python main.py news --hours 48 --limit 20
-
-# Override language or max length, same as `post`
-uv run python main.py news --language pt --max-length 2000
 
 # ── Generate (local preview, no LinkedIn) ───────────────────────────────
 
@@ -96,6 +100,10 @@ uv run python main.py generate
 
 # Generate with a specific subject
 uv run python main.py generate --subject "Rust vs Go in 2026"
+
+# Draft a post from news/blogs the same way as `post`
+uv run python main.py generate --source news --auto
+uv run python main.py generate --source blogs --interactive
 
 # ── Authentication ──────────────────────────────────────────────────────
 
@@ -157,7 +165,13 @@ uv run python main.py subjects
 
 ```
 linkedin-bot/
-├── main.py              # Entry point — Typer CLI with 5 commands
+├── main.py              # Entry point — Typer CLI (history, subjects) + module registration
+├── config.py            # Env/config, logging, shared Typer `app` instance
+├── post_commands.py     # `generate`/`post` commands (--source subjects|news|blogs)
+├── linkedin_commands.py # `auth` command
+├── content_sources.py   # DeepSeek generation + article-selection helpers, shared across sources
+├── news_fetcher.py      # RSS fetching/ranking for the `news` source
+├── blog_fetcher.py      # RSS fetching for the `blogs` source (curated engineering blogs)
 ├── linkedin_client.py   # LinkedIn API wrapper (official client library)
 ├── db.py                # SQLite operations (posts, tokens)
 ├── image_provider.py    # Tweet-card image generator (Pillow)

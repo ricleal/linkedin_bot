@@ -2,9 +2,8 @@
 """LinkedIn Bot — Generate posts with DeepSeek and publish to LinkedIn.
 
 Usage:
-  python main.py generate     Generate a post and save as draft
-  python main.py post         Generate and publish to LinkedIn
-  python main.py news         Pick a trending/recent news story and post about it
+  python main.py generate     Generate a post and save as draft (--source subjects|news|blogs)
+  python main.py post         Generate and publish to LinkedIn (--source subjects|news|blogs)
   python main.py auth         Authenticate with LinkedIn
   python main.py history      Show post history
   python main.py subjects     List available subjects
@@ -15,8 +14,8 @@ from typing import Optional
 import typer
 
 import db
-import linkedin_commands  # noqa: F401  (registers generate/post/auth commands)
-import news_commands  # noqa: F401  (registers the news command)
+import linkedin_commands  # noqa: F401  (registers the auth command)
+import post_commands  # noqa: F401  (registers the generate/post commands)
 from config import DB_PATH_ABS, app, load_subjects, logger
 
 # ── Commands ───────────────────────────────────────────────────────────────
